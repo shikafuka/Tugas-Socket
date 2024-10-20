@@ -2,6 +2,7 @@ import socket
 import threading
 import tkinter as tk
 from tkinter import scrolledtext
+from tkinter import messagebox
 
 # Caesar Cipher for encryption and decryption
 def caesar_encrypt(plaintext, shift):
@@ -17,50 +18,106 @@ def caesar_encrypt(plaintext, shift):
 def caesar_decrypt(ciphertext, shift):
     return caesar_encrypt(ciphertext, -shift)
 
-class Client:
+class ClientApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Chat Application")
+        self.root.title("Login")
+        
+        # Setup login window
+        self.login_frame = tk.Frame(self.root)
+        self.login_frame.pack(padx=10, pady=10)
 
-        # Setup GUI
+        # IP Address input
+        self.ip_label = tk.Label(self.login_frame, text="Server IP:")
+        self.ip_label.grid(row=0, column=0, padx=5, pady=5)
+        self.ip_entry = tk.Entry(self.login_frame)
+        self.ip_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        # Port input
+        self.port_label = tk.Label(self.login_frame, text="Port:")
+        self.port_label.grid(row=1, column=0, padx=5, pady=5)
+        self.port_entry = tk.Entry(self.login_frame)
+        self.port_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Username input
+        self.username_label = tk.Label(self.login_frame, text="Username:")
+        self.username_label.grid(row=2, column=0, padx=5, pady=5)
+        self.username_entry = tk.Entry(self.login_frame)
+        self.username_entry.grid(row=2, column=1, padx=5, pady=5)
+
+        # Password input
+        self.password_label = tk.Label(self.login_frame, text="Password:")
+        self.password_label.grid(row=3, column=0, padx=5, pady=5)
+        self.password_entry = tk.Entry(self.login_frame, show="*")
+        self.password_entry.grid(row=3, column=1, padx=5, pady=5)
+
+        # Login button
+        self.login_button = tk.Button(self.login_frame, text="Login", command=self.login)
+        self.login_button.grid(row=4, columnspan=2, padx=5, pady=5)
+
+        # Variables for socket and user info
+        self.client_socket = None
+
+    def login(self):
+        ip = self.ip_entry.get()
+        port = self.port_entry.get()
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+
+        if ip == "" or port == "" or username == "" or password == "":
+            messagebox.showwarning("Input Error", "Please enter all fields.")
+            return
+
+        # Attempt to connect to server and authenticate
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            server_port = int(port)
+            self.client_socket.connect((ip, server_port))
+            self.client_socket.send(f"{username}:{password}".encode('utf-8'))
+
+            # Receive server response for authentication
+            response = self.client_socket.recv(1024).decode('utf-8')
+            if response == "OK":
+                # Successful login, open chat window
+                self.open_chat_window(username)
+            else:
+                messagebox.showerror("Login Failed", response)
+        except Exception as e:
+            messagebox.showerror("Connection Error", f"Unable to connect to server: {e}")
+            return
+
+    def open_chat_window(self, username):
+        # Destroy login frame and show chat window
+        self.login_frame.destroy()
+
+        self.root.title(f"Chat - {username}")
+
+        # Setup chat window
         self.chat_display = scrolledtext.ScrolledText(self.root)
-        self.chat_display.pack()
+        self.chat_display.pack(padx=10, pady=10)
 
         self.message_entry = tk.Entry(self.root)
-        self.message_entry.pack()
+        self.message_entry.pack(padx=10, pady=5)
+
+        # Bind the Enter key to the send_message function
+        self.message_entry.bind("<Return>", self.send_message)
 
         self.send_button = tk.Button(self.root, text="Send", command=self.send_message)
-        self.send_button.pack()
+        self.send_button.pack(padx=10, pady=5)
 
-        # Setup socket connection
-        self.server_ip = input("Enter server IP: ")
-        self.server_port = int(input("Enter server port: "))
-        self.username = input("Enter your username: ")
-        self.password = input("Enter your password: ")
+        self.username = username
 
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.client_socket.connect((self.server_ip, self.server_port))
-
-        self.authenticate()
-
-        # Start thread to receive messages
+        # Start a thread to receive messages
         self.receive_thread = threading.Thread(target=self.receive_messages)
         self.receive_thread.start()
 
-    def authenticate(self):
-        # Send username and password for authentication
-        self.client_socket.send(f"{self.username}:{self.password}".encode('utf-8'))
-        response = self.client_socket.recv(1024).decode('utf-8')
-        if response != "OK":
-            print("Authentication failed. Exiting...")
-            self.root.quit()
-
-    def send_message(self):
+    def send_message(self, event=None):
         message = self.message_entry.get()
-        encrypted_message = caesar_encrypt(message, 3)  # Encrypt the message
-        self.client_socket.send(encrypted_message.encode('utf-8'))
-        self.chat_display.insert(tk.END, f"Me: {message}\n")
-        self.message_entry.delete(0, tk.END)
+        if message:
+            encrypted_message = caesar_encrypt(message, 3)  # Encrypt the message
+            self.client_socket.send(encrypted_message.encode('utf-8'))
+            self.chat_display.insert(tk.END, f"Me: {message}\n")
+            self.message_entry.delete(0, tk.END)
 
     def receive_messages(self):
         while True:
@@ -73,5 +130,5 @@ class Client:
                 break
 
 root = tk.Tk()
-client = Client(root)
+app = ClientApp(root)
 root.mainloop()
