@@ -55,6 +55,10 @@ class ClientApp:
         self.login_button = tk.Button(self.login_frame, text="Login", command=self.login)
         self.login_button.grid(row=4, columnspan=2, padx=5, pady=5)
 
+        # Exit Button
+        self.exit_button = tk.Button(self.root, text="Exit", command=self.exit_chat)
+        self.exit_button.pack(padx=10, pady=10)
+        
         # Variables for socket and user info
         self.client_socket = None
 
@@ -128,6 +132,17 @@ class ClientApp:
             except:
                 print("Error receiving message")
                 break
+            
+    def exit_chat(self):
+        result = messagebox.askquestion("Exit", "Are you sure you want to exit?", icon='warning')
+        if result == 'yes':
+            if self.client_socket is not None:
+                try:
+                    self.client_socket.sendto("exit".encode('utf-8'), ("localhost", 12000))  # Send "exit" to the server
+                except Exception as e:
+                    print(f"Failed to notify server of exit: {e}")
+                self.client_socket.close()  # Close socket if it exists
+            self.root.quit()  # Close the GUI application
 
 root = tk.Tk()
 app = ClientApp(root)

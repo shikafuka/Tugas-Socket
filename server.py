@@ -1,5 +1,4 @@
 import socket
-import threading
 
 clients = []
 client_usernames = {}
@@ -18,20 +17,22 @@ def caesar_encrypt(plaintext, shift):
 def caesar_decrypt(ciphertext, shift):
     return caesar_encrypt(ciphertext, -shift)
 
-# Function to handle clients
-def handle_client(server_socket):
+def handle_client(server_socket, password):
     while True:
         try:
-            # Receive message and client address using recvfrom for UDP
+            # Receive message from clients
             message, client_address = server_socket.recvfrom(1024)
             decoded_message = message.decode('utf-8')
 
-            # Check if the client is sending credentials for authentication
+            # If the client is not authenticated, check password
             if client_address not in clients:
-                username, password = decoded_message.split(':')
+                # First message should be in the format "username:password"
+                if ':' not in decoded_message:
+                    server_socket.sendto("Invalid format. Please send username:password".encode('utf-8'), client_address)
+                    continue
 
-                # Check password
-                if password != "chat123":
+                username, received_password = decoded_message.split(':')
+                if received_password != password:
                     server_socket.sendto("Invalid password!".encode('utf-8'), client_address)
                     continue
 
@@ -46,11 +47,20 @@ def handle_client(server_socket):
                     broadcast_message(f"{username} has joined the chat.", server_socket, client_address)
                     continue
 
-            # Process normal messages (encrypted)
+            # Handle exit message
+            if decoded_message.lower() == "exit":
+                username = client_usernames[client_address]
+                print(f"[{username}] has left the chat.")  # Log on server when a user quits
+                broadcast_message(f"{username} has left the chat.", server_socket, client_address)
+                clients.remove(client_address)
+                del client_usernames[client_address]
+                continue
+
+            # Process normal messages (keep encrypted for log)
             if client_address in clients:
                 username = client_usernames[client_address]
+                print(f"[{username}] {decoded_message} (Encrypted)")  # Print the encrypted message received from the client
                 decrypted_message = caesar_decrypt(decoded_message, 3)
-                print(f"[{username}] {decrypted_message}")
                 broadcast_message(f"{username}: {decrypted_message}", server_socket, client_address)
 
         except Exception as e:
@@ -67,13 +77,47 @@ def broadcast_message(message, server_socket, sender_address):
                 print(f"Failed to send message to {client}")
                 clients.remove(client)
 
-# Start the server
-def start_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_socket.bind(("localhost", 12000))
-    print("Server started on localhost:12000")
+def is_valid_ip(ip):
+    try:
+        # Use socket library to check IP address validity
+        socket.inet_aton(ip)
+        return True
+    except socket.error:
+        return False
 
-    handle_client(server_socket)
+def is_valid_port(port):
+    return 1 <= port <= 65535
+
+# Start the server
+def start_server(ip, port, password):
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        server_socket.bind((ip, port))
+        print(f"Server started on {ip}:{port} with password '{password}'")
+    except OSError as e:
+        print(f"Failed to bind to {ip}:{port}. Error: {e}")
+        return
+
+    handle_client(server_socket, password)
 
 if __name__ == "__main__":
-    start_server()
+    # Loop until a valid IP address is provided
+    while True:
+        ip = input("Enter server IP (default 'localhost'): ") or "localhost"
+        if ip == "localhost" or is_valid_ip(ip):
+            break
+        print("Invalid IP address. Please enter a valid IP address.")
+
+    # Loop until a valid port number is provided
+    while True:
+        try:
+            port = int(input("Enter server port (default 12000): ") or 12000)
+            if is_valid_port(port):
+                break
+            print("Invalid port. Port must be between 1 and 65535.")
+        except ValueError:
+            print("Invalid input. Please enter a numeric value for the port.")
+
+    password = input("Enter chatroom password (default 'chat123'): ") or "chat123"
+
+    start_server(ip, port, password)
